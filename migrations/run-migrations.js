@@ -13,59 +13,43 @@ async function runMigrations() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
-        // Check if already migrated
-        const checkTable = await pool.query(`
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'users'
-            );
-        `);
+        // Get all migration files
+        const migrationFiles = fs.readdirSync(__dirname)
+            .filter(file => file.endsWith('.sql'))
+            .sort(); // Run in order: 001, 002, etc.
 
-        if (checkTable.rows[0].exists) {
-            console.log('✅ Database already migrated - tables exist');
-            console.log('ℹ️  To re-run migrations, drop tables first');
+        console.log(`📄 Found ${migrationFiles.length} migration file(s)`);
 
-            // Show table counts
-            const counts = await pool.query(`
-                SELECT 
-                    (SELECT COUNT(*) FROM users) as users,
-                    (SELECT COUNT(*) FROM notebook_entries) as notebook,
-                    (SELECT COUNT(*) FROM chat_sessions) as sessions,
-                    (SELECT COUNT(*) FROM curriculum_progress) as progress
-            `);
+        for (const file of migrationFiles) {
+            const migrationPath = path.join(__dirname, file);
+            console.log(`📄 Running: ${file}`);
 
-            console.log('📊 Current table counts:');
-            console.log('   Users:', counts.rows[0].users);
-            console.log('   Notebook:', counts.rows[0].notebook);
-            console.log('   Sessions:', counts.rows[0].sessions);
-            console.log('   Progress:', counts.rows[0].progress);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            return;
+            const sql = fs.readFileSync(migrationPath, 'utf8');
+
+            try {
+                await pool.query(sql);
+                console.log(`   ✅ ${file} completed`);
+            } catch (err) {
+                // Skip if already applied (tables exist, columns exist, etc.)
+                if (err.code === '42P07' || err.code === '42701') {
+                    console.log(`   ⏭️  ${file} already applied`);
+                } else {
+                    throw err;
+                }
+            }
         }
 
-        // Read migration file
-        const migrationPath = path.join(__dirname, '001_initial_schema.sql');
-        console.log('📄 Reading migration file:', migrationPath);
-
-        const sql = fs.readFileSync(migrationPath, 'utf8');
-        console.log('✅ Migration file loaded');
-
-        // Execute migration
-        console.log('⚙️  Executing SQL...');
-        await pool.query(sql);
-
-        console.log('✅ Migration completed successfully!');
+        console.log('✅ All migrations completed!');
 
         // Verify tables created
         const tables = await pool.query(`
-            SELECT table_name 
-            FROM information_schema.tables 
+            SELECT table_name
+            FROM information_schema.tables
             WHERE table_schema = 'public'
             ORDER BY table_name;
         `);
 
-        console.log('📊 Created tables:');
+        console.log('📊 Database tables:');
         tables.rows.forEach(row => {
             console.log('   ✓', row.table_name);
         });
