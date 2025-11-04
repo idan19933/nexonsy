@@ -1,139 +1,102 @@
-// server/routes/nexonRoutes.js - COMPLETE WITH NOTEBOOK ROUTES
+// server/routes/nexonRoutes.js - NEXONASK CHAT ONLY
 import express from 'express';
-import notebookService from '../services/notebookService.js';
+import nexonAskService from '../services/nexonAskService.js';
 
 const router = express.Router();
 
-// ==================== NOTEBOOK ROUTES ====================
+// ==================== NEXONASK CHAT ENDPOINTS ====================
 
-// GET /api/notebook - Get all notebook entries for a user
-router.get('/notebook', async (req, res) => {
+/**
+ * POST /api/chat/nexon-ask
+ * Main NexonAsk chat endpoint
+ */
+router.post('/chat/nexon-ask', async (req, res) => {
     try {
-        const studentId = req.query.userId || req.user?.id;
+        const { userId, message } = req.body;
 
-        if (!studentId) {
+        if (!userId || !message) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                error: 'Missing userId or message'
             });
         }
 
-        const filters = {
-            topic: req.query.topic
-        };
+        console.log('💬 NexonAsk request from user:', userId);
+        console.log('📝 Message:', message);
 
-        const result = await notebookService.getEntries(studentId, filters);
-        res.json(result);
+        const response = await nexonAskService.generateResponse(userId, message);
+
+        res.json(response);
+
     } catch (error) {
-        console.error('❌ Notebook route error:', error);
+        console.error('❌ NexonAsk error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Failed to generate response',
+            message: error.message
         });
     }
 });
 
-// GET /api/notebook/stats - Get statistics about notebook entries
-router.get('/notebook/stats', async (req, res) => {
+/**
+ * GET /api/chat/insights
+ * Get student insights for banner
+ */
+router.get('/chat/insights', async (req, res) => {
     try {
-        const studentId = req.query.userId || req.user?.id;
+        const { userId } = req.query;
 
-        if (!studentId) {
+        if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                error: 'Missing userId'
             });
         }
 
-        const result = await notebookService.getStats(studentId);
-        res.json(result);
+        console.log('📊 Fetching insights for:', userId);
+
+        const insights = await nexonAskService.getInsights(userId);
+
+        res.json(insights);
+
     } catch (error) {
-        console.error('❌ Notebook stats route error:', error);
+        console.error('❌ Insights error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Failed to fetch insights',
+            message: error.message
         });
     }
 });
 
-// POST /api/notebook - Add a new notebook entry
-router.post('/notebook', async (req, res) => {
+/**
+ * GET /api/chat/student-insights (alias for compatibility)
+ */
+router.get('/chat/student-insights', async (req, res) => {
     try {
-        const studentId = req.body.userId || req.user?.id;
+        const { userId } = req.query;
 
-        if (!studentId) {
+        if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                error: 'Missing userId'
             });
         }
 
-        const result = await notebookService.addEntry(studentId, req.body);
-        res.json(result);
+        console.log('📊 Fetching student insights for:', userId);
+
+        const insights = await nexonAskService.getInsights(userId);
+
+        res.json(insights);
+
     } catch (error) {
-        console.error('❌ Add notebook entry route error:', error);
+        console.error('❌ Student insights error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Failed to fetch student insights',
+            message: error.message
         });
     }
-});
-
-// GET /api/notebook/recent - Get recent entries
-router.get('/notebook/recent', async (req, res) => {
-    try {
-        const studentId = req.query.userId || req.user?.id;
-        const limit = parseInt(req.query.limit) || 5;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
-
-        const result = await notebookService.getRecentEntries(studentId, limit);
-        res.json(result);
-    } catch (error) {
-        console.error('❌ Recent entries route error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// DELETE /api/notebook/:id - Delete a notebook entry
-router.delete('/notebook/:id', async (req, res) => {
-    try {
-        const studentId = req.body.userId || req.user?.id;
-        const entryId = req.params.id;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
-
-        const result = await notebookService.deleteEntry(entryId, studentId);
-        res.json(result);
-    } catch (error) {
-        console.error('❌ Delete entry route error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// ==================== HEALTH CHECK ====================
-router.get('/health', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Nexon API is running',
-        timestamp: new Date().toISOString()
-    });
 });
 
 export default router;

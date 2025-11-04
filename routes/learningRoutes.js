@@ -1,40 +1,11 @@
-// server/routes/learningRoutes.js
+// server/routes/learningRoutes.js - OPTIMIZED VERSION
 import express from 'express';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 const router = express.Router();
 
-// Helper to call Claude API
-async function callClaudeAPI(prompt, maxTokens = 4000) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-            model: 'claude-3-5-haiku-20241022',
-            max_tokens: maxTokens,
-            temperature: 0.7,
-            messages: [{
-                role: 'user',
-                content: prompt
-            }]
-        })
-    });
+// Cache for generated content (optional - helps reduce API calls)
+const contentCache = new Map();
+const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes
 
-    if (!response.ok) {
-        throw new Error(`Claude API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-}
-
-// Clean JSON from Claude's response
 function cleanJsonText(rawText) {
     let jsonText = rawText.trim();
 
@@ -54,191 +25,241 @@ function cleanJsonText(rawText) {
     return jsonText;
 }
 
-// ==================== GET LEARNING CONTENT ====================
-router.post('/get-content', async (req, res) => {
-    try {
-        const { topicName, subtopicName, topicId, subtopicId } = req.body;
+function getCacheKey(topic, subtopic, grade, personality) {
+    return `${topic}-${subtopic}-${grade}-${personality}`;
+}
 
-        console.log('📚 Generating learning content for:', {
-            topic: topicName,
-            subtopic: subtopicName
+router.post('/generate-content', async (req, res) => {
+    try {
+        const { topic, subtopic, topicId, subtopicId, grade, personality, userId } = req.body;
+
+        console.log('📚 API Request received - Generating learning content:', {
+            topic,
+            subtopic,
+            grade,
+            personality,
+            userId,
+            hasApiKey: !!process.env.ANTHROPIC_API_KEY
         });
 
-        const prompt = `אתה מורה למתמטיקה מוכשר בעברית. צור תוכן לימודי מעניין ואינטראקטיבי עבור:
-נושא: ${topicName}
-${subtopicName ? `תת-נושא: ${subtopicName}` : ''}
+        // Validate required fields
+        if (!topic || !grade || !personality) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: topic, grade, and personality are required'
+            });
+        }
 
-צור תוכן לימודי ב-JSON בפורמט הבא:
+        if (!process.env.ANTHROPIC_API_KEY) {
+            console.error('❌ ANTHROPIC_API_KEY not found in environment');
+            return res.status(500).json({
+                success: false,
+                error: 'API key not configured'
+            });
+        }
 
+        // Check cache first (optional)
+        const cacheKey = getCacheKey(topic, subtopic, grade, personality);
+        const cached = contentCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log('✅ Returning cached content');
+            return res.json({
+                success: true,
+                content: cached.data,
+                cached: true
+            });
+        }
+
+        const personalityContext = personality === 'dina' ?
+            'את דינה - מורה סבלנית ומעודדת המסבירה בצורה ברורה וידידותית' :
+            personality === 'ron' ?
+                'אתה רון - מורה אנרגטי ומעורר השראה המשתמש בדוגמאות מעולם הספורט והמשחקים' :
+                'אתה נקסון - מורה AI מקצועי ומתקדם המותאם אישית לכל תלמיד';
+
+        const learningPrompt = `${personalityContext}
+
+צור תוכן לימוד למתמטיקה עבור:
+- נושא: ${topic}
+${subtopic ? `- תת-נושא: ${subtopic}` : ''}
+- כיתה: ${grade}
+
+החזר JSON בפורמט הזה בדיוק:
 {
-  "title": "כותרת מרכזית מעניינת",
-  "introduction": "הקדמה קצרה ומעניינת (2-3 שורות)",
-  "sections": [
+  "title": "כותרת מושכת לנושא",
+  "introduction": "מבוא קצר",
+  "pages": [
     {
-      "title": "כותרת הסעיף",
-      "subtitle": "תיאור קצר",
-      "story": "סיפור קצר או אנלוגיה מהחיים (אופציונלי, 2-3 שורות)",
-      "explanation": "הסבר מפורט של המושג (3-5 פסקאות, כל פסקה בשורה חדשה)",
-      "examples": [
+      "title": "יסודות - מה זה ${topic}?",
+      "content": [
         {
-          "title": "כותרת הדוגמה",
-          "problem": "השאלה",
-          "solution": "פתרון מפורט שלב אחר שלב (כל שלב בשורה חדשה)",
-          "answer": "תשובה סופית"
+          "type": "text",
+          "value": "הסבר ראשוני פשוט של הנושא"
+        },
+        {
+          "type": "example",
+          "value": "דוגמה פשוטה: 5 + 3 = 8",
+          "solution": "כשמחברים 5 ו-3, מקבלים 8"
+        },
+        {
+          "type": "tip",
+          "value": "טיפ שימושי לזכור"
         }
       ],
-      "keyPoints": [
-        "נקודה חשובה 1",
-        "נקודה חשובה 2",
-        "נקודה חשובה 3"
+      "quiz": [
+        {
+          "question": "שאלה פשוטה לבדיקה",
+          "options": ["תשובה 1", "תשובה 2", "תשובה 3", "תשובה נכונה"],
+          "correctAnswer": 3,
+          "explanation": "הסבר קצר"
+        }
+      ]
+    },
+    {
+      "title": "דוגמאות מתקדמות",
+      "content": [
+        {
+          "type": "text",
+          "value": "הסבר מעמיק יותר"
+        },
+        {
+          "type": "example",
+          "value": "דוגמה מורכבת יותר",
+          "solution": "פתרון מפורט"
+        }
       ],
-      "quiz": {
-        "question": "שאלת הבנה",
-        "answer": "תשובה נכונה",
-        "hint": "רמז אם התשובה שגויה"
-      }
+      "quiz": [
+        {
+          "question": "שאלה מתקדמת",
+          "options": ["א", "ב", "ג", "ד"],
+          "correctAnswer": 1,
+          "explanation": "הסבר"
+        }
+      ]
+    },
+    {
+      "title": "תרגול וסיכום",
+      "content": [
+        {
+          "type": "text",
+          "value": "סיכום של כל מה שלמדנו"
+        },
+        {
+          "type": "tip",
+          "value": "טיפ חשוב לסיום"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "שאלת סיכום",
+          "options": ["1", "2", "3", "4"],
+          "correctAnswer": 0,
+          "explanation": "סיכום"
+        }
+      ]
     }
   ]
 }
 
-דרישות:
-1. 2-4 סעיפים (sections) - מהקל לקשה
-2. כל סעיף עם 1-3 דוגמאות פשוטות וברורות
-3. השתמש בשפה פשוטה וידידותית
-4. כלול סיפורים קצרים או אנלוגיות מהחיים כדי להפוך את הלמידה למעניינת
-5. דוגמאות עם פתרונות מפורטים שלב אחר שלב
-6. כל סעיף עם 3-4 נקודות מפתח
-7. שאלת הבנה בסוף כל סעיף
-8. התאם את הרמה לתלמידי חטיבת ביניים/תיכון
-
+חשוב: צור 3-4 דפים, כל דף עם 3-5 content items ו-2-3 שאלות quiz. השתמש בעברית פשוטה וברורה.
 החזר רק את ה-JSON, ללא טקסט נוסף.`;
 
-        const claudeResponse = await callClaudeAPI(prompt, 4000);
-        const jsonText = cleanJsonText(claudeResponse);
-        const content = JSON.parse(jsonText);
+        console.log('🤖 Calling Claude API...');
 
-        console.log('✅ Learning content generated successfully');
-        console.log(`   Sections: ${content.sections?.length || 0}`);
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 4000,
+                temperature: 0.7,
+                messages: [{
+                    role: 'user',
+                    content: learningPrompt
+                }]
+            })
+        });
+
+        console.log('📡 API Response status:', response.status);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('❌ Claude API Error:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorData
+            });
+            return res.status(500).json({
+                success: false,
+                error: `API Error: ${response.status} ${response.statusText}`,
+                details: errorData
+            });
+        }
+
+        const data = await response.json();
+        console.log('✅ Got response from Claude');
+
+        const contentText = data.content[0].text;
+        console.log('📄 Raw content length:', contentText.length);
+        console.log('📄 First 200 chars:', contentText.substring(0, 200));
+
+        const cleanedText = cleanJsonText(contentText);
+        console.log('🧹 Cleaned JSON length:', cleanedText.length);
+
+        let learningContent;
+        try {
+            learningContent = JSON.parse(cleanedText);
+            console.log('✅ JSON parsed successfully');
+            console.log('📊 Pages count:', learningContent.pages?.length);
+        } catch (parseError) {
+            console.error('❌ JSON Parse Error:', parseError.message);
+            console.log('📄 Failed text:', cleanedText.substring(0, 500));
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to parse AI response',
+                rawResponse: cleanedText.substring(0, 500)
+            });
+        }
+
+        // Cache the result
+        contentCache.set(cacheKey, {
+            data: learningContent,
+            timestamp: Date.now()
+        });
+
+        // Clean old cache entries (keep last 50)
+        if (contentCache.size > 50) {
+            const entries = Array.from(contentCache.entries());
+            entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+            for (let i = 0; i < 10; i++) {
+                contentCache.delete(entries[i][0]);
+            }
+        }
 
         res.json({
             success: true,
-            content: content
+            content: learningContent,
+            cached: false
         });
 
     } catch (error) {
-        console.error('❌ Error generating learning content:', error);
+        console.error('❌ CRITICAL Error in generate-content:', error);
+        console.error('Error stack:', error.stack);
         res.status(500).json({
             success: false,
-            error: 'Failed to generate learning content',
-            details: error.message
+            error: error.message || 'Internal server error',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
 
-// ==================== CHECK QUIZ ANSWER ====================
-router.post('/check-quiz', async (req, res) => {
-    try {
-        const { question, correctAnswer, userAnswer } = req.body;
-
-        console.log('🧪 Checking quiz answer:', {
-            question: question?.substring(0, 50),
-            correct: correctAnswer,
-            user: userAnswer
-        });
-
-        const prompt = `בדוק אם התשובה של התלמיד נכונה.
-
-שאלה: ${question}
-תשובה נכונה: ${correctAnswer}
-תשובה של התלמיד: ${userAnswer}
-
-החזר JSON בפורמט:
-{
-  "isCorrect": true/false,
-  "feedback": "משוב מפורט לתלמיד (2-3 שורות)"
-}
-
-אם התשובה נכונה - תן חיזוק חיובי.
-אם התשובה לא נכונה - הסבר בעדינות מה השגיאה ואיך לתקן.
-התייחס גם לתשובות קרובות או חלקיות.
-
-החזר רק JSON, ללא טקסט נוסף.`;
-
-        const claudeResponse = await callClaudeAPI(prompt, 500);
-        const jsonText = cleanJsonText(claudeResponse);
-        const result = JSON.parse(jsonText);
-
-        console.log(`   Result: ${result.isCorrect ? '✅ Correct' : '❌ Incorrect'}`);
-
-        res.json(result);
-
-    } catch (error) {
-        console.error('❌ Error checking quiz:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to check quiz answer',
-            details: error.message
-        });
-    }
-});
-
-// ==================== GET PERSONALIZED LEARNING PATH ====================
-router.post('/get-path', async (req, res) => {
-    try {
-        const { userId, weakTopics, strengths } = req.body;
-
-        console.log('🎯 Generating personalized learning path for user:', userId);
-
-        const prompt = `צור מסלול למידה מותאם אישית על סמך:
-נקודות חולשה: ${weakTopics?.join(', ') || 'לא ידוע'}
-נקודות חוזק: ${strengths?.join(', ') || 'לא ידוע'}
-
-צור JSON בפורמט:
-{
-  "recommendedTopics": [
-    {
-      "topicName": "שם הנושא",
-      "reason": "למה חשוב ללמוד אותו עכשיו",
-      "estimatedTime": "זמן משוער בדקות",
-      "difficulty": "קל/בינוני/קשה",
-      "prerequisites": ["נושא 1", "נושא 2"]
-    }
-  ],
-  "learningTips": [
-    "טיפ 1",
-    "טיפ 2",
-    "טיפ 3"
-  ],
-  "weeklyGoal": "מטרה לשבוע הקרוב"
-}
-
-המלצות:
-1. התחל מנושאים יסודיים שחסרים
-2. התקדם בהדרגה
-3. קשר בין נושאים
-4. תן טיפים מעשיים
-
-החזר רק JSON.`;
-
-        const claudeResponse = await callClaudeAPI(prompt, 2000);
-        const jsonText = cleanJsonText(claudeResponse);
-        const learningPath = JSON.parse(jsonText);
-
-        console.log('✅ Learning path generated');
-
-        res.json({
-            success: true,
-            path: learningPath
-        });
-
-    } catch (error) {
-        console.error('❌ Error generating learning path:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to generate learning path',
-            details: error.message
-        });
-    }
+// Optional: Clear cache endpoint
+router.post('/clear-cache', (req, res) => {
+    contentCache.clear();
+    res.json({ success: true, message: 'Cache cleared' });
 });
 
 export default router;

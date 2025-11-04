@@ -1,212 +1,392 @@
-// server/routes/notebookRoutes.js - DEDICATED NOTEBOOK ROUTES
+// server/routes/notebookRoutes.js - FIXED: Query params + Answer saving
 import express from 'express';
-import notebookService from '../services/notebookService.js';
+import pool from '../config/database.js';
 
 const router = express.Router();
 
-// ==================== SAVE EXERCISE TO NOTEBOOK ====================
+/**
+ * Helper function to get internal user ID from Firebase UID
+ */
+async function getUserIdFromFirebaseUid(firebaseUid) {
+    try {
+        const result = await pool.query(
+            'SELECT id FROM users WHERE firebase_uid = $1',
+            [firebaseUid]
+        );
+
+        if (result.rows.length > 0) {
+            return result.rows[0].id;
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Error looking up user:', error);
+        return null;
+    }
+}
+
+/**
+ * POST /api/notebook - Save answer to notebook (AUTO + MANUAL)
+ * Called when user answers a question OR manually saves
+ */
+router.post('/', async (req, res) => {
+    try {
+        const {
+            userId,
+            topic,
+            subtopic,
+            questionText,
+            userAnswer,
+            correctAnswer,
+            explanation,
+            isCorrect,
+            difficulty
+        } = req.body;
+
+        console.log('📔 Saving answer to notebook:', {
+            userId,
+            topic,
+            isCorrect
+        });
+
+        // Get internal user ID
+        let internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        // Create user if doesn't exist
+        if (!internalUserId) {
+            const createResult = await pool.query(
+                'INSERT INTO users (firebase_uid) VALUES ($1) RETURNING id',
+                [userId]
+            );
+            internalUserId = createResult.rows[0].id;
+            console.log('✅ Created new user ID:', internalUserId);
+        }
+
+        // Insert into notebook
+        const result = await pool.query(
+            `INSERT INTO notebook_entries 
+            (user_id, student_id, topic, subtopic, question_text, user_answer, correct_answer, explanation, is_correct, difficulty, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            RETURNING *`,
+            [
+                internalUserId,
+                internalUserId, // Use same as user_id
+                topic,
+                subtopic || null,
+                questionText || '',
+                userAnswer || '',
+                correctAnswer || '',
+                explanation || '',
+                isCorrect || false,
+                difficulty || 'medium'
+            ]
+        );
+
+        console.log('✅ Saved to notebook, entry ID:', result.rows[0].id);
+
+        res.json({
+            success: true,
+            entry: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ Error saving to notebook:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to save to notebook',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/notebook/save-exercise - Alternative endpoint for frontend
+ * Handles exerciseData wrapper structure
+ */
 router.post('/save-exercise', async (req, res) => {
     try {
         const { userId, exerciseData } = req.body;
 
-        if (!userId) {
+        if (!userId || !exerciseData) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                message: 'Missing userId or exerciseData'
             });
         }
 
-        if (!exerciseData || !exerciseData.question) {
-            return res.status(400).json({
-                success: false,
-                error: 'Exercise data required'
-            });
+        console.log('📝 Saving exercise to notebook:', {
+            userId,
+            topic: exerciseData.topic,
+            isCorrect: exerciseData.isCorrect
+        });
+
+        // Get internal user ID
+        let internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        // Create user if doesn't exist
+        if (!internalUserId) {
+            const createResult = await pool.query(
+                'INSERT INTO users (firebase_uid) VALUES ($1) RETURNING id',
+                [userId]
+            );
+            internalUserId = createResult.rows[0].id;
+            console.log('✅ Created new user ID:', internalUserId);
         }
 
-        console.log(`📝 Saving exercise to notebook for user ${userId}`);
-        const result = await notebookService.saveExerciseToNotebook(userId, exerciseData);
+        // Insert into notebook
+        const result = await pool.query(
+            `INSERT INTO notebook_entries 
+            (user_id, student_id, topic, subtopic, question_text, user_answer, correct_answer, explanation, is_correct, difficulty, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            RETURNING *`,
+            [
+                internalUserId,
+                internalUserId,
+                exerciseData.topic || '',
+                exerciseData.subtopic || null,
+                exerciseData.question || '',
+                exerciseData.userAnswer || '',
+                exerciseData.correctAnswer || '',
+                exerciseData.explanation || '',
+                exerciseData.isCorrect || false,
+                exerciseData.difficulty || 'medium'
+            ]
+        );
 
-        res.json(result);
+        console.log('✅ Exercise saved to notebook, ID:', result.rows[0].id);
+
+        res.json({
+            success: true,
+            entry: result.rows[0]
+        });
+
     } catch (error) {
-        console.error('❌ Save exercise route error:', error);
+        console.error('❌ Error saving exercise:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to save exercise',
             error: error.message
         });
     }
 });
 
-// ==================== GET ALL ENTRIES ====================
+/**
+ * GET /api/notebook/entries?userId=xxx - Get all notebook entries
+ */
 router.get('/entries', async (req, res) => {
     try {
-        const userId = req.query.userId;
+        const { userId } = req.query;
 
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                message: 'Missing userId parameter'
             });
         }
 
-        const filters = {
-            topic: req.query.topic,
-            type: req.query.type
-        };
+        console.log('📚 Getting notebook entries for:', userId);
 
-        const result = await notebookService.getEntries(userId, filters);
-        res.json(result);
+        const internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        if (!internalUserId) {
+            return res.json({
+                success: true,
+                entries: [],
+                count: 0
+            });
+        }
+
+        const result = await pool.query(
+            `SELECT * FROM notebook_entries 
+            WHERE user_id = $1
+            ORDER BY created_at DESC`,
+            [internalUserId]
+        );
+
+        console.log(`✅ Found ${result.rows.length} entries`);
+
+        res.json({
+            success: true,
+            entries: result.rows,
+            count: result.rows.length
+        });
+
     } catch (error) {
-        console.error('❌ Get entries route error:', error);
+        console.error('❌ Error fetching notebook entries:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to fetch entries',
             error: error.message
         });
     }
 });
 
-// ==================== GET RECENT ENTRIES ====================
-router.get('/recent', async (req, res) => {
-    try {
-        const userId = req.query.userId;
-        const limit = parseInt(req.query.limit) || 5;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
-
-        const result = await notebookService.getRecentEntries(userId, limit);
-        res.json(result);
-    } catch (error) {
-        console.error('❌ Recent entries route error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// ==================== GET STATS ====================
+/**
+ * GET /api/notebook/stats?userId=xxx - Get notebook stats
+ */
 router.get('/stats', async (req, res) => {
     try {
-        const userId = req.query.userId;
+        const { userId } = req.query;
 
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                message: 'Missing userId parameter'
             });
         }
 
-        const result = await notebookService.getStats(userId);
-        res.json(result);
+        console.log('📊 Getting notebook stats for:', userId);
+
+        const internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        if (!internalUserId) {
+            return res.json({
+                success: true,
+                stats: {
+                    totalEntries: 0,
+                    correctCount: 0,
+                    accuracy: 0,
+                    topicsPracticed: 0
+                }
+            });
+        }
+
+        const statsQuery = `
+            SELECT 
+                COUNT(*) as total_entries,
+                SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct_count,
+                ROUND(AVG(CASE WHEN is_correct THEN 1 ELSE 0 END) * 100) as accuracy,
+                COUNT(DISTINCT topic) as topics_practiced
+            FROM notebook_entries
+            WHERE user_id = $1
+        `;
+
+        const result = await pool.query(statsQuery, [internalUserId]);
+        const stats = result.rows[0];
+
+        res.json({
+            success: true,
+            stats: {
+                totalEntries: parseInt(stats.total_entries) || 0,
+                correctCount: parseInt(stats.correct_count) || 0,
+                accuracy: parseInt(stats.accuracy) || 0,
+                topicsPracticed: parseInt(stats.topics_practiced) || 0
+            }
+        });
+
     } catch (error) {
-        console.error('❌ Notebook stats route error:', error);
+        console.error('❌ Error getting notebook stats:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to get stats',
             error: error.message
         });
     }
 });
 
-// ==================== ADD GENERIC ENTRY ====================
-router.post('/add', async (req, res) => {
+/**
+ * GET /api/notebook/entries/:topic?userId=xxx - Get entries by topic
+ */
+router.get('/entries/:topic', async (req, res) => {
     try {
-        const { userId, entryData } = req.body;
+        const { topic } = req.params;
+        const { userId } = req.query;
 
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: 'User ID required'
+                message: 'Missing userId parameter'
             });
         }
 
-        const result = await notebookService.addEntry(userId, entryData);
-        res.json(result);
+        const internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        if (!internalUserId) {
+            return res.json({
+                success: true,
+                entries: []
+            });
+        }
+
+        const result = await pool.query(
+            `SELECT * FROM notebook_entries 
+            WHERE user_id = $1 AND topic = $2
+            ORDER BY created_at DESC`,
+            [internalUserId, topic]
+        );
+
+        res.json({
+            success: true,
+            entries: result.rows
+        });
+
     } catch (error) {
-        console.error('❌ Add entry route error:', error);
+        console.error('❌ Error fetching topic entries:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to fetch entries',
             error: error.message
         });
     }
 });
 
-// ==================== DELETE ENTRY ====================
-router.delete('/entry/:id', async (req, res) => {
+/**
+ * PUT /api/notebook/entry/:entryId - Update entry
+ */
+router.put('/entry/:entryId', async (req, res) => {
     try {
-        const userId = req.body.userId || req.query.userId;
-        const entryId = req.params.id;
+        const { entryId } = req.params;
+        const { title, content, notes, tags, summary } = req.body;
 
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
+        const result = await pool.query(
+            `UPDATE notebook_entries 
+            SET title = COALESCE($1, title),
+                content = COALESCE($2, content),
+                notes = COALESCE($3, notes),
+                tags = COALESCE($4, tags),
+                summary = COALESCE($5, summary),
+                updated_at = NOW()
+            WHERE id = $6
+            RETURNING *`,
+            [title, content, notes, tags, summary, entryId]
+        );
 
-        const result = await notebookService.deleteEntry(entryId, userId);
-        res.json(result);
+        res.json({
+            success: true,
+            entry: result.rows[0]
+        });
+
     } catch (error) {
-        console.error('❌ Delete entry route error:', error);
+        console.error('❌ Error updating entry:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to update entry',
             error: error.message
         });
     }
 });
 
-// ==================== GET ENTRIES BY TOPIC ====================
-router.get('/topic/:topicId', async (req, res) => {
+/**
+ * DELETE /api/notebook/entry/:entryId - Delete entry
+ */
+router.delete('/entry/:entryId', async (req, res) => {
     try {
-        const userId = req.query.userId;
-        const topicId = req.params.topicId;
+        const { entryId } = req.params;
 
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
+        await pool.query(
+            'DELETE FROM notebook_entries WHERE id = $1',
+            [entryId]
+        );
 
-        const result = await notebookService.getEntriesByTopic(userId, topicId);
-        res.json(result);
-    } catch (error) {
-        console.error('❌ Get topic entries route error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
+        res.json({
+            success: true,
+            message: 'Entry deleted successfully'
         });
-    }
-});
 
-// ==================== BATCH SAVE EXERCISES ====================
-router.post('/batch-save', async (req, res) => {
-    try {
-        const { userId, exercises } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                error: 'User ID required'
-            });
-        }
-
-        if (!Array.isArray(exercises) || exercises.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'Exercises array required'
-            });
-        }
-
-        const result = await notebookService.batchSaveExercises(userId, exercises);
-        res.json(result);
     } catch (error) {
-        console.error('❌ Batch save route error:', error);
+        console.error('❌ Error deleting entry:', error);
         res.status(500).json({
             success: false,
+            message: 'Failed to delete entry',
             error: error.message
         });
     }
