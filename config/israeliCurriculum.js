@@ -1596,71 +1596,84 @@ export const ISRAELI_CURRICULUM = {
     // ========================================
     // כיתה יב׳ - 4 יחידות
     // ========================================
+    // ========================================
+// כיתה יב׳ - 4 יחידות - UPDATED
+// ========================================
+    // ========================================
+// כיתה יב׳ - 4 יחידות - COMPLETE WITH ALL DB TOPICS
+// ========================================
     grade_12_4: {
         id: 'grade_12_4',
         name: 'כיתה יב׳ - 4 יחידות',
         nameEn: 'Grade 12 - 4 Units',
         emoji: '🎓',
-        examInfo: {
-            examCode: '471',
-            weight: '60% מהציון המסכם',
-            duration: '3:30'
-        },
         topics: [
             {
-                id: 'integrals-12-4',
-                name: 'אינטגרלים',
-                nameEn: 'Integrals',
+                id: 'integrals-review',
+                name: '∫ חשבון אינטגרלי',
+                nameEn: 'Integral Calculus',
                 icon: '∫',
                 difficulty: 'advanced',
                 subtopics: [
-                    { id: 'antiderivatives-review-12', name: 'אנטי-נגזרות - חזרה', nameEn: 'Antiderivatives Review' },
-                    { id: 'integration-rules-12', name: 'כללי אינטגרציה', nameEn: 'Integration Rules' },
-                    { id: 'substitution-method-12', name: 'שיטת ההצבה', nameEn: 'Substitution Method' },
-                    { id: 'integration-by-parts-12', name: 'אינטגרציה בחלקים', nameEn: 'Integration by Parts' },
                     { id: 'definite-integrals-12', name: 'אינטגרלים מסוימים', nameEn: 'Definite Integrals' },
-                    { id: 'fundamental-theorem-12', name: 'המשפט היסודי של החשבון האינטגרלי', nameEn: 'Fundamental Theorem of Calculus' },
                     { id: 'area-under-curve-12', name: 'שטח מתחת לעקומה', nameEn: 'Area Under Curve' },
-                    { id: 'area-between-curves-12', name: 'שטח בין עקומות', nameEn: 'Area Between Curves' }
+                    { id: 'volume-revolution-12', name: 'נפח גוף סיבוב', nameEn: 'Volume of Revolution' }
                 ]
             },
             {
-                id: 'integral-applications-12-4',
-                name: 'יישומי אינטגרלים',
-                nameEn: 'Integral Applications',
+                id: 'derivatives-review',
+                name: "f'(x) חשבון דיפרנציאלי",
+                nameEn: 'Differential Calculus',
+                icon: "f'(x)",
+                difficulty: 'advanced',
+                subtopics: [
+                    { id: 'derivative-applications-12', name: 'יישומי נגזרת', nameEn: 'Derivative Applications' },
+                    { id: 'extremum-problems-12', name: 'בעיות קיצון', nameEn: 'Extremum Problems' },
+                    { id: 'curve-sketching-12', name: 'חקירת פונקציות', nameEn: 'Function Analysis' }
+                ]
+            },
+            {
+                id: 'sequences-12',
+                name: '1,2,3... סדרות וטורים',
+                nameEn: 'Sequences and Series',
+                icon: 'Σ',
+                difficulty: 'advanced',
+                subtopics: [
+                    { id: 'sequences-limits-12', name: 'גבולות סדרות', nameEn: 'Sequence Limits' },
+                    { id: 'series-convergence-12', name: 'התכנסות טורים', nameEn: 'Series Convergence' }
+                ]
+            },
+            {
+                id: 'geometry-analytic-12',
+                name: '📐 גיאומטריה אנליטית',
+                nameEn: 'Analytic Geometry',
+                icon: '📐',
+                difficulty: 'advanced',
+                subtopics: [
+                    { id: 'conic-sections-12', name: 'חתכי חרוט', nameEn: 'Conic Sections' },
+                    { id: 'circle-equations-12', name: 'משוואת מעגל', nameEn: 'Circle Equations' }
+                ]
+            },
+            {
+                id: 'probability-statistics-12',
+                name: '📊 סטטיסטיקה והסתברות',
+                nameEn: 'Statistics & Probability',
                 icon: '📊',
                 difficulty: 'advanced',
                 subtopics: [
-                    { id: 'volume-revolution-12', name: 'נפח גוף סיבוב', nameEn: 'Volume of Revolution' },
-                    { id: 'arc-length-12', name: 'אורך קשת', nameEn: 'Arc Length' },
-                    { id: 'average-value-12', name: 'ערך ממוצע', nameEn: 'Average Value' },
-                    { id: 'work-problems-12', name: 'בעיות עבודה', nameEn: 'Work Problems' }
+                    { id: 'normal-distribution-12', name: 'התפלגות נורמלית', nameEn: 'Normal Distribution' },
+                    { id: 'statistical-inference-12', name: 'הסקה סטטיסטית', nameEn: 'Statistical Inference' }
                 ]
             },
             {
-                id: 'differential-equations-intro-12-4',
-                name: 'משוואות דיפרנציאליות - מבוא',
-                nameEn: 'Differential Equations Intro',
-                icon: 'dy/dx',
-                difficulty: 'advanced',
-                subtopics: [
-                    { id: 'de-basics-12', name: 'יסודות משוואות דיפרנציאליות', nameEn: 'DE Basics' },
-                    { id: 'separable-de-12', name: 'משוואות פרידות', nameEn: 'Separable Equations' },
-                    { id: 'first-order-de-12', name: 'משוואות מסדר ראשון', nameEn: 'First Order DE' },
-                    { id: 'de-applications-12', name: 'יישומי משוואות דיפרנציאליות', nameEn: 'DE Applications' }
-                ]
-            },
-            {
-                id: 'bagrut-review-4-comprehensive',
-                name: 'חזרה מקיפה לבגרות',
-                nameEn: 'Comprehensive Bagrut Review',
+                id: 'bagrut-practice-12',
+                name: '📝 תרגול מבחני בגרות',
+                nameEn: 'Bagrut Exam Practice',
                 icon: '📝',
                 difficulty: 'advanced',
                 subtopics: [
-                    { id: 'calculus-review-12', name: 'חזרה חדו"א', nameEn: 'Calculus Review' },
-                    { id: 'geometry-review-12-4', name: 'חזרה גאומטריה', nameEn: 'Geometry Review' },
-                    { id: 'statistics-probability-review-4', name: 'חזרה סטטיסטיקה והסתברות', nameEn: 'Statistics & Probability Review' },
-                    { id: 'bagrut-4-practice-12', name: 'תרגול מבחני בגרות', nameEn: 'Bagrut Practice' }
+                    { id: 'past-exams-12-4', name: 'מבחנים קודמים', nameEn: 'Past Exams' },
+                    { id: 'exam-strategies-12-4', name: 'אסטרטגיות בחינה', nameEn: 'Exam Strategies' }
                 ]
             }
         ]

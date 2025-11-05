@@ -168,7 +168,102 @@ router.post('/save-exercise', async (req, res) => {
         });
     }
 });
+/**
+ * POST /api/notebook/save - Save entry to notebook
+ * Simple endpoint matching frontend call
+ */
+router.post('/save', async (req, res) => {
+    try {
+        const {
+            userId,
+            topic,
+            subtopic,
+            question,
+            studentAnswer,
+            correctAnswer,
+            isCorrect,
+            difficulty,
+            hintsUsed,
+            attempts,
+            timeSpent
+        } = req.body;
 
+        console.log('💾 POST /api/notebook/save');
+        console.log('   Body:', JSON.stringify(req.body, null, 2));
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing userId'
+            });
+        }
+
+        // ✅ VALIDATE REQUIRED FIELDS
+        if (!topic || topic.length === 0) {
+            console.error('❌ Missing topic');
+            return res.status(400).json({
+                success: false,
+                message: 'Missing topic'
+            });
+        }
+
+        // Get internal user ID
+        let internalUserId = await getUserIdFromFirebaseUid(userId);
+
+        // Create user if doesn't exist
+        if (!internalUserId) {
+            const createResult = await pool.query(
+                'INSERT INTO users (firebase_uid) VALUES ($1) RETURNING id',
+                [userId]
+            );
+            internalUserId = createResult.rows[0].id;
+            console.log('✅ Created new user ID:', internalUserId);
+        }
+
+        // ✅ ENSURE ALL FIELDS ARE STRINGS/VALID
+        const questionText = String(question || '').substring(0, 5000);
+        const answerText = String(studentAnswer || '').substring(0, 1000);
+        const correctAnswerText = String(correctAnswer || '').substring(0, 1000);
+
+        // Insert into notebook_entries
+        const result = await pool.query(
+            `INSERT INTO notebook_entries
+             (user_id, student_id, topic, subtopic, question_text, user_answer, correct_answer, is_correct, difficulty, hints_used, attempts, time_spent, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+                 RETURNING *`,
+            [
+                internalUserId,
+                internalUserId,
+                topic || 'כללי',
+                subtopic || null,
+                questionText,
+                answerText,
+                correctAnswerText,
+                isCorrect || false,
+                difficulty || 'medium',
+                hintsUsed || 0,
+                attempts || 1,
+                timeSpent || 0
+            ]
+        );
+
+        console.log('✅ Notebook entry saved, ID:', result.rows[0].id);
+
+        res.json({
+            success: true,
+            entry: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ Error in /save route:', error);
+        console.error('   Stack:', error.stack);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to save to notebook',
+            error: error.message
+        });
+    }
+});
 /**
  * GET /api/notebook/entries?userId=xxx - Get all notebook entries
  */
